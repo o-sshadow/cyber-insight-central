@@ -19,4 +19,13 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      // Ensure _redirects file is copied to the build output
+      onwarn(warning, warn) {
+        if (warning.code === 'UNRESOLVED_IMPORT') return
+        warn(warning)
+      }
+    }
+  }
 }));

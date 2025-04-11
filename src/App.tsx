@@ -44,8 +44,9 @@ const App = () => (
             <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
             <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
             
-            {/* Catch-all Route */}
-            <Route path="*" element={<Navigate to="/404" replace />} />
+            {/* 404 Route - Make sure this appears as the last route */}
+            <Route path="/404" element={<NotFound />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
       </BrowserRouter>
