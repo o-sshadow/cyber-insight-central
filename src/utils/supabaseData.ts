@@ -10,6 +10,8 @@ export interface Alert {
   timestamp: string;
   sourceIp: string; // camelCase in our interface
   resolved: boolean;
+  // These fields are not in the database schema but we use them in our app
+  // They'll be undefined when fetching from the database
   description?: string;
   affectedSystems?: string[];
   mitigationSteps?: string;
@@ -87,11 +89,8 @@ export const fetchAlerts = async (options?: {
       severity: alert.severity as AlertSeverity,
       timestamp: alert.timestamp,
       sourceIp: alert.source_ip,
-      resolved: alert.resolved,
-      description: alert.description,
-      affectedSystems: alert.affected_systems,
-      mitigationSteps: alert.mitigation_steps,
-      attackVector: alert.attack_vector
+      resolved: alert.resolved
+      // No additional fields as they don't exist in the database
     }));
   } catch (error: any) {
     console.error("Error fetching alerts:", error);
@@ -117,6 +116,7 @@ export const fetchAlert = async (id: string): Promise<Alert | null> => {
       return null;
     }
     
+    // Create an Alert object with the fields we have in the database
     return {
       id: data.id,
       name: data.name,
@@ -124,10 +124,11 @@ export const fetchAlert = async (id: string): Promise<Alert | null> => {
       timestamp: data.timestamp,
       sourceIp: data.source_ip,
       resolved: data.resolved,
-      description: data.description,
-      affectedSystems: data.affected_systems,
-      mitigationSteps: data.mitigation_steps,
-      attackVector: data.attack_vector
+      // Add optional fields with defaults
+      description: undefined,
+      affectedSystems: undefined,
+      mitigationSteps: undefined,
+      attackVector: undefined
     };
   } catch (error: any) {
     console.error("Error fetching alert:", error);
@@ -338,11 +339,14 @@ export const addComment = async (incidentId: string, content: string, userEmail:
 // Get all user roles
 export const getUserRoles = async (): Promise<UserRole[]> => {
   try {
-    // We need to join with auth.users to get the email
-    const { data: users, error: usersError } = await supabase.auth.admin.listUsers();
+    // Get the current user for context
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
     
-    if (usersError) throw usersError;
+    if (!currentUser) {
+      throw new Error("Not authenticated");
+    }
     
+    // Fetch user roles from the user_roles table (now properly defined in types)
     const { data: roles, error: rolesError } = await supabase
       .from('user_roles')
       .select('*');
@@ -351,36 +355,29 @@ export const getUserRoles = async (): Promise<UserRole[]> => {
     
     // Create a map of user IDs to emails
     const userMap = new Map();
-    users.users.forEach(user => {
-      userMap.set(user.id, user.email);
-    });
     
-    // Combine the data
+    // Ensure current user is included
+    if (currentUser.email) {
+      userMap.set(currentUser.id, currentUser.email);
+    }
+    
+    // Since we only have access to the current user's email through auth,
+    // we'll use that and add placeholders for other users
     const userRoles: UserRole[] = [];
     
-    // First add users with roles
-    roles.forEach(role => {
-      const email = userMap.get(role.user_id) || 'unknown@example.com';
+    // Add users with roles
+    roles?.forEach(role => {
+      // If this is the current user, use their email
+      const email = (role.user_id === currentUser.id && currentUser.email) 
+        ? currentUser.email 
+        : `user-${role.user_id.substring(0, 8)}@example.com`;
+        
       userRoles.push({
         id: role.id,
         userId: role.user_id,
         email: email,
         isAdmin: role.is_admin,
         createdAt: role.created_at
-      });
-      
-      // Remove this user from the map to avoid duplication
-      userMap.delete(role.user_id);
-    });
-    
-    // Add remaining users without roles
-    userMap.forEach((email, userId) => {
-      userRoles.push({
-        id: 'temp-' + userId,
-        userId: userId,
-        email: email,
-        isAdmin: false,
-        createdAt: new Date().toISOString()
       });
     });
     
