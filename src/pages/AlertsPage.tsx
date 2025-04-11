@@ -33,120 +33,23 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-
-interface Alert {
-  id: string;
-  name: string;
-  severity: "Critical" | "High" | "Medium" | "Low";
-  timestamp: string;
-  sourceIp: string;
-  resolved: boolean;
-}
+import { supabase } from "@/integrations/supabase/client";
+import { fetchAlerts, resolveAlert, Alert, AlertSeverity } from "@/utils/supabaseData";
 
 export default function AlertsPage() {
-  const { supabase } = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterSeverity, setFilterSeverity] = useState<string | null>(null);
+  const [filterSeverity, setFilterSeverity] = useState<AlertSeverity | null>(null);
   const [filterResolved, setFilterResolved] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const fetchAlerts = async () => {
+    const loadAlerts = async () => {
       try {
         setLoading(true);
-        
-        // In a real app, this would be an actual Supabase query
-        // For demo purposes, we're using mock data
-        
-        // Mock API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Mock alerts data
-        const mockAlerts = [
-          {
-            id: "1",
-            name: "Suspicious Login Attempt",
-            severity: "Critical",
-            timestamp: "2025-04-10T15:30:00",
-            sourceIp: "45.123.45.67",
-            resolved: false
-          },
-          {
-            id: "2",
-            name: "Unusual File Access Pattern",
-            severity: "High",
-            timestamp: "2025-04-10T14:15:00",
-            sourceIp: "192.168.1.105",
-            resolved: false
-          },
-          {
-            id: "3",
-            name: "Failed Authentication",
-            severity: "Medium",
-            timestamp: "2025-04-10T13:45:00",
-            sourceIp: "10.0.0.15",
-            resolved: true
-          },
-          {
-            id: "4",
-            name: "Network Scan Detected",
-            severity: "High",
-            timestamp: "2025-04-10T12:20:00",
-            sourceIp: "78.45.123.210",
-            resolved: false
-          },
-          {
-            id: "5",
-            name: "Resource Usage Spike",
-            severity: "Low",
-            timestamp: "2025-04-10T11:10:00",
-            sourceIp: "192.168.1.42",
-            resolved: true
-          },
-          {
-            id: "6",
-            name: "Malware Detection",
-            severity: "Critical",
-            timestamp: "2025-04-10T10:05:00",
-            sourceIp: "192.168.1.56",
-            resolved: false
-          },
-          {
-            id: "7",
-            name: "Firewall Rule Violation",
-            severity: "Medium",
-            timestamp: "2025-04-10T09:30:00",
-            sourceIp: "35.89.112.45",
-            resolved: false
-          },
-          {
-            id: "8",
-            name: "Data Exfiltration Attempt",
-            severity: "High",
-            timestamp: "2025-04-09T22:15:00",
-            sourceIp: "178.45.23.90",
-            resolved: true
-          },
-          {
-            id: "9",
-            name: "Config Change Detected",
-            severity: "Low",
-            timestamp: "2025-04-09T18:40:00",
-            sourceIp: "10.0.0.5",
-            resolved: false
-          },
-          {
-            id: "10",
-            name: "Privilege Escalation",
-            severity: "Critical",
-            timestamp: "2025-04-09T16:20:00",
-            sourceIp: "192.168.1.75",
-            resolved: true
-          }
-        ];
-        
-        setAlerts(mockAlerts);
+        const alertsData = await fetchAlerts();
+        setAlerts(alertsData);
       } catch (error) {
         console.error("Error fetching alerts:", error);
         toast.error("Failed to load alerts");
@@ -155,21 +58,31 @@ export default function AlertsPage() {
       }
     };
 
-    fetchAlerts();
-  }, [supabase]);
+    loadAlerts();
+
+    // Set up realtime subscription
+    const alertsSubscription = supabase
+      .channel('alerts-table-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'alerts' }, 
+        async () => {
+          // Refresh alerts when data changes
+          const refreshedAlerts = await fetchAlerts();
+          setAlerts(refreshedAlerts);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(alertsSubscription);
+    };
+  }, []);
 
   const handleResolveAlert = async (id: string) => {
-    try {
-      // In a real app, this would update the database
-      // For demo purposes, we're just updating the local state
-      setAlerts(alerts.map(alert => 
-        alert.id === id ? { ...alert, resolved: true } : alert
-      ));
-      
+    const success = await resolveAlert(id);
+    if (success) {
       toast.success("Alert marked as resolved");
-    } catch (error) {
-      console.error("Error resolving alert:", error);
-      toast.error("Failed to resolve alert");
+      // The data will refresh automatically through the realtime subscription
     }
   };
 

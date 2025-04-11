@@ -23,28 +23,11 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-
-interface Log {
-  id: string;
-  content: string;
-  timestamp: string;
-  user: string;
-  type: "system" | "comment" | "action";
-}
-
-interface Incident {
-  id: string;
-  name: string;
-  created_at: string;
-  description: string;
-  status: "open" | "investigating" | "contained" | "resolved";
-  severity: "Critical" | "High" | "Medium" | "Low";
-  source_ip: string;
-  affected_systems: string[];
-}
+import { supabase } from "@/integrations/supabase/client";
+import { fetchIncident, fetchIncidentLogs, addComment, Log, Incident } from "@/utils/supabaseData";
 
 export default function IncidentPage() {
-  const { supabase, user } = useAuth();
+  const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
   const [loading, setLoading] = useState(true);
   const [incident, setIncident] = useState<Incident | null>(null);
@@ -53,83 +36,21 @@ export default function IncidentPage() {
   const [submittingComment, setSubmittingComment] = useState(false);
 
   useEffect(() => {
-    const fetchIncidentDetails = async () => {
+    const loadIncidentData = async () => {
+      if (!id) return;
+      
       try {
         setLoading(true);
         
-        // In a real app, this would be an actual Supabase query
-        // For demo purposes, we're using mock data
+        // Fetch incident details
+        const incidentData = await fetchIncident(id);
+        setIncident(incidentData);
         
-        // Mock API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Mock incident data
-        const mockIncident: Incident = {
-          id: id || "1",
-          name: "Unauthorized Access Attempt",
-          created_at: "2025-04-10T14:30:00",
-          description: "Multiple failed login attempts from unusual geographic location followed by successful authentication. Potential credential compromise.",
-          status: "investigating",
-          severity: "High",
-          source_ip: "45.123.45.67",
-          affected_systems: ["Authentication Server", "User Database", "Customer Portal"]
-        };
-        
-        // Mock logs data
-        const mockLogs: Log[] = [
-          {
-            id: "1",
-            content: "Incident created from alert: Suspicious Login Attempt",
-            timestamp: "2025-04-10T14:30:00",
-            user: "System",
-            type: "system"
-          },
-          {
-            id: "2",
-            content: "Initial assessment: Multiple failed login attempts from IP 45.123.45.67 followed by successful login.",
-            timestamp: "2025-04-10T14:35:00",
-            user: "john.doe@example.com",
-            type: "comment"
-          },
-          {
-            id: "3",
-            content: "Started investigation",
-            timestamp: "2025-04-10T14:40:00",
-            user: "john.doe@example.com",
-            type: "action"
-          },
-          {
-            id: "4",
-            content: "Geo-location of source IP: Eastern Europe (unusual for this user)",
-            timestamp: "2025-04-10T14:50:00",
-            user: "System",
-            type: "system"
-          },
-          {
-            id: "5",
-            content: "User account temporarily disabled as a precaution",
-            timestamp: "2025-04-10T15:05:00",
-            user: "sarah.smith@example.com",
-            type: "action"
-          },
-          {
-            id: "6",
-            content: "Reviewing access logs for additional suspicious activities",
-            timestamp: "2025-04-10T15:15:00",
-            user: "james.wilson@example.com",
-            type: "comment"
-          },
-          {
-            id: "7",
-            content: "Found additional access attempts to other user accounts from same source IP",
-            timestamp: "2025-04-10T15:30:00",
-            user: "james.wilson@example.com",
-            type: "comment"
-          }
-        ];
-        
-        setIncident(mockIncident);
-        setLogs(mockLogs);
+        // Fetch incident logs
+        if (incidentData) {
+          const logsData = await fetchIncidentLogs(incidentData.id);
+          setLogs(logsData);
+        }
       } catch (error) {
         console.error("Error fetching incident details:", error);
         toast.error("Failed to load incident details");
@@ -138,32 +59,50 @@ export default function IncidentPage() {
       }
     };
 
-    fetchIncidentDetails();
-  }, [id, supabase]);
+    loadIncidentData();
+
+    // Set up realtime subscription for logs
+    let logsSubscription;
+    if (id) {
+      logsSubscription = supabase
+        .channel('logs-changes')
+        .on('postgres_changes', 
+          { event: 'INSERT', schema: 'public', table: 'logs', filter: `incident_id=eq.${id}` }, 
+          async () => {
+            // Refresh logs when new log is added
+            if (incident) {
+              const refreshedLogs = await fetchIncidentLogs(incident.id);
+              setLogs(refreshedLogs);
+            }
+          }
+        )
+        .subscribe();
+    }
+
+    return () => {
+      if (logsSubscription) {
+        supabase.removeChannel(logsSubscription);
+      }
+    };
+  }, [id]);
 
   const handleSubmitComment = async () => {
-    if (!comment.trim()) return;
+    if (!comment.trim() || !incident || !user) return;
     
     try {
       setSubmittingComment(true);
       
-      // In a real app, this would actually save to Supabase
-      // For demo purposes, we're just updating the local state
+      const success = await addComment(
+        incident.id, 
+        comment, 
+        user.email || "anonymous@example.com"
+      );
       
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      const newLog: Log = {
-        id: `log-${Date.now()}`,
-        content: comment,
-        timestamp: new Date().toISOString(),
-        user: user?.email || "unknown@example.com",
-        type: "comment"
-      };
-      
-      setLogs([...logs, newLog]);
-      setComment("");
-      toast.success("Comment added to incident timeline");
+      if (success) {
+        setComment("");
+        toast.success("Comment added to incident timeline");
+        // Logs will refresh via realtime subscription
+      }
     } catch (error) {
       console.error("Error adding comment:", error);
       toast.error("Failed to add comment");
@@ -286,7 +225,7 @@ export default function IncidentPage() {
                     <div className="bg-secondary/50 p-3 rounded-md">
                       <h3 className="text-sm font-medium mb-2">Affected Systems</h3>
                       <div className="flex flex-wrap gap-1">
-                        {incident.affected_systems.map((system, index) => (
+                        {incident.affected_systems?.map((system, index) => (
                           <Badge key={index} variant="outline" className="bg-secondary/50">
                             {system}
                           </Badge>
@@ -305,37 +244,43 @@ export default function IncidentPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-8">
-                      {logs.map((log) => (
-                        <div key={log.id} className="relative pl-6 pb-8">
-                          <div className="absolute left-0 top-0 flex h-6 w-6 items-center justify-center">
-                            {getLogIcon(log.type)}
-                          </div>
-                          <div className="flex flex-col space-y-2">
-                            <div className="flex items-start justify-between">
-                              <div className="space-y-1">
-                                <p className="text-sm font-medium leading-none">
-                                  {log.user}
-                                </p>
-                                <div className="flex items-center text-xs text-muted-foreground">
-                                  <Clock className="mr-1 h-3 w-3" />
-                                  {new Date(log.timestamp).toLocaleString(undefined, {
-                                    dateStyle: "medium",
-                                    timeStyle: "short",
-                                  })}
-                                </div>
-                              </div>
-                              <Badge variant="outline" className="capitalize">
-                                {log.type}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {log.content}
-                            </p>
-                          </div>
-                          {/* Connector line */}
-                          <span className="absolute left-3 top-6 bottom-0 w-px bg-border"></span>
+                      {logs.length === 0 ? (
+                        <div className="py-6 text-center text-muted-foreground">
+                          <p>No logs found for this incident</p>
                         </div>
-                      ))}
+                      ) : (
+                        logs.map((log) => (
+                          <div key={log.id} className="relative pl-6 pb-8">
+                            <div className="absolute left-0 top-0 flex h-6 w-6 items-center justify-center">
+                              {getLogIcon(log.type)}
+                            </div>
+                            <div className="flex flex-col space-y-2">
+                              <div className="flex items-start justify-between">
+                                <div className="space-y-1">
+                                  <p className="text-sm font-medium leading-none">
+                                    {log.user_email}
+                                  </p>
+                                  <div className="flex items-center text-xs text-muted-foreground">
+                                    <Clock className="mr-1 h-3 w-3" />
+                                    {new Date(log.timestamp).toLocaleString(undefined, {
+                                      dateStyle: "medium",
+                                      timeStyle: "short",
+                                    })}
+                                  </div>
+                                </div>
+                                <Badge variant="outline" className="capitalize">
+                                  {log.type}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {log.content}
+                              </p>
+                            </div>
+                            {/* Connector line */}
+                            <span className="absolute left-3 top-6 bottom-0 w-px bg-border"></span>
+                          </div>
+                        ))
+                      )}
                     </div>
                     
                     <Separator className="my-6" />

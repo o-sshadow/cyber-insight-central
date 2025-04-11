@@ -10,6 +10,12 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { 
+  fetchDashboardStats, 
+  fetchRecentAlerts, 
+  seedDatabaseWithExampleData, 
+  type Alert 
+} from "@/utils/supabaseData";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -20,13 +26,14 @@ export default function Dashboard() {
     totalIncidents: 0,
     criticalAlerts: 0
   });
-  const [recentAlerts, setRecentAlerts] = useState([]);
+  const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
   const [alertsBySeverity, setAlertsBySeverity] = useState([
     { severity: "Critical", count: 0 },
     { severity: "High", count: 0 },
     { severity: "Medium", count: 0 },
     { severity: "Low", count: 0 }
   ]);
+  const [isSeedingDatabase, setIsSeedingDatabase] = useState(false);
 
   // Fetch dashboard data
   useEffect(() => {
@@ -34,64 +41,30 @@ export default function Dashboard() {
       try {
         setLoading(true);
         
-        // In a real app, these would be actual Supabase queries
-        // For demo purposes, we're using mock data
+        // Check if we need to seed the database
+        const { data: alertsCheck } = await supabase
+          .from('alerts')
+          .select('id')
+          .limit(1);
+          
+        if (!alertsCheck || alertsCheck.length === 0) {
+          // Auto-seed database if empty
+          await seedDatabaseWithExampleData();
+        }
         
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Mock data for dashboard
+        // Fetch dashboard stats
+        const stats = await fetchDashboardStats();
         setDashboardStats({
-          totalAlerts: 167,
-          unresolvedAlerts: 32,
-          totalIncidents: 15,
-          criticalAlerts: 8
+          totalAlerts: stats.totalAlerts,
+          unresolvedAlerts: stats.unresolvedAlerts,
+          totalIncidents: stats.totalIncidents,
+          criticalAlerts: stats.criticalAlerts
         });
+        setAlertsBySeverity(stats.alertsBySeverity);
         
-        setAlertsBySeverity([
-          { severity: "Critical", count: 8 },
-          { severity: "High", count: 24 },
-          { severity: "Medium", count: 63 },
-          { severity: "Low", count: 72 }
-        ]);
-        
-        setRecentAlerts([
-          {
-            id: "1",
-            name: "Suspicious Login Attempt",
-            severity: "Critical",
-            timestamp: "2025-04-10T15:30:00",
-            sourceIp: "45.123.45.67"
-          },
-          {
-            id: "2",
-            name: "Unusual File Access Pattern",
-            severity: "High",
-            timestamp: "2025-04-10T14:15:00",
-            sourceIp: "192.168.1.105"
-          },
-          {
-            id: "3",
-            name: "Failed Authentication",
-            severity: "Medium",
-            timestamp: "2025-04-10T13:45:00",
-            sourceIp: "10.0.0.15"
-          },
-          {
-            id: "4",
-            name: "Network Scan Detected",
-            severity: "High",
-            timestamp: "2025-04-10T12:20:00",
-            sourceIp: "78.45.123.210"
-          },
-          {
-            id: "5",
-            name: "Resource Usage Spike",
-            severity: "Low",
-            timestamp: "2025-04-10T11:10:00",
-            sourceIp: "192.168.1.42"
-          }
-        ]);
+        // Fetch recent alerts
+        const alerts = await fetchRecentAlerts(5);
+        setRecentAlerts(alerts);
         
         toast.success("Dashboard data refreshed");
       } catch (error) {
@@ -110,11 +83,22 @@ export default function Dashboard() {
     try {
       alertsSubscription = supabase
         .channel('alerts-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, (payload) => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, async (payload) => {
           console.log('Real-time update:', payload);
-          // In a real app, we would update the state here based on the payload
+          // Refresh data when alerts table changes
+          const stats = await fetchDashboardStats();
+          setDashboardStats({
+            totalAlerts: stats.totalAlerts,
+            unresolvedAlerts: stats.unresolvedAlerts,
+            totalIncidents: stats.totalIncidents,
+            criticalAlerts: stats.criticalAlerts
+          });
+          setAlertsBySeverity(stats.alertsBySeverity);
+          
+          const alerts = await fetchRecentAlerts(5);
+          setRecentAlerts(alerts);
+          
           toast.info("Alert data updated");
-          fetchDashboardData();
         })
         .subscribe();
     } catch (error) {
@@ -129,16 +113,45 @@ export default function Dashboard() {
     };
   }, []);
 
+  const handleSeedDatabase = async () => {
+    setIsSeedingDatabase(true);
+    try {
+      await seedDatabaseWithExampleData();
+      // Refresh data after seeding
+      const stats = await fetchDashboardStats();
+      setDashboardStats({
+        totalAlerts: stats.totalAlerts,
+        unresolvedAlerts: stats.unresolvedAlerts,
+        totalIncidents: stats.totalIncidents,
+        criticalAlerts: stats.criticalAlerts
+      });
+      setAlertsBySeverity(stats.alertsBySeverity);
+      
+      const alerts = await fetchRecentAlerts(5);
+      setRecentAlerts(alerts);
+    } finally {
+      setIsSeedingDatabase(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-cyber-background">
       <Navbar />
       
       <div className="container py-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">Security Dashboard</h1>
-          <p className="text-muted-foreground">
-            Overview of your security posture and recent activity
-          </p>
+        <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold">Security Dashboard</h1>
+            <p className="text-muted-foreground">
+              Overview of your security posture and recent activity
+            </p>
+          </div>
+          <Button 
+            onClick={handleSeedDatabase} 
+            disabled={isSeedingDatabase}
+          >
+            {isSeedingDatabase ? "Seeding..." : "Seed Example Data"}
+          </Button>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
