@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bell, Menu, User, X } from "lucide-react";
+import { Bell, Menu, ShieldAlert, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,10 +23,11 @@ export function Navbar() {
     { name: "Dashboard", href: "/dashboard" },
     { name: "Alerts", href: "/alerts" },
     { name: "Incidents", href: "/incidents" },
+    { name: "Admin", href: "/admin" },
   ];
   
   const isActive = (path: string) => {
-    return location.pathname === path;
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
   return (

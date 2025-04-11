@@ -10,7 +10,10 @@ import { AuthGuard } from "@/components/AuthGuard";
 import LoginPage from "./pages/LoginPage";
 import Dashboard from "./pages/Dashboard";
 import AlertsPage from "./pages/AlertsPage";
+import AlertDetailPage from "./pages/AlertDetailPage";
+import IncidentsPage from "./pages/IncidentsPage";
 import IncidentPage from "./pages/IncidentPage";
+import AdminPage from "./pages/AdminPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,7 +33,10 @@ const App = () => (
             <Route path="/" element={<AuthGuard><Dashboard /></AuthGuard>} />
             <Route path="/dashboard" element={<AuthGuard><Dashboard /></AuthGuard>} />
             <Route path="/alerts" element={<AuthGuard><AlertsPage /></AuthGuard>} />
+            <Route path="/alerts/:id" element={<AuthGuard><AlertDetailPage /></AuthGuard>} />
+            <Route path="/incidents" element={<AuthGuard><IncidentsPage /></AuthGuard>} />
             <Route path="/incidents/:id" element={<AuthGuard><IncidentPage /></AuthGuard>} />
+            <Route path="/admin" element={<AuthGuard><AdminPage /></AuthGuard>} />
             
             {/* Catch-all Route */}
             <Route path="*" element={<NotFound />} />

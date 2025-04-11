@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
@@ -11,6 +10,10 @@ export interface Alert {
   timestamp: string;
   sourceIp: string; // camelCase in our interface
   resolved: boolean;
+  description?: string;
+  affectedSystems?: string[];
+  mitigationSteps?: string;
+  attackVector?: string;
 }
 
 export interface Incident {
@@ -32,12 +35,46 @@ export interface Log {
   type: "system" | "comment" | "action";
 }
 
-export const fetchAlerts = async (): Promise<Alert[]> => {
+export interface UserRole {
+  id: string;
+  userId: string;
+  email: string;
+  isAdmin: boolean;
+  createdAt: string;
+}
+
+// Fetch alerts with pagination and filtering options
+export const fetchAlerts = async (options?: {
+  limit?: number;
+  offset?: number;
+  resolved?: boolean;
+  severity?: AlertSeverity;
+}): Promise<Alert[]> => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('alerts')
       .select('*')
       .order('timestamp', { ascending: false });
+    
+    // Apply filters if provided
+    if (options?.resolved !== undefined) {
+      query = query.eq('resolved', options.resolved);
+    }
+    
+    if (options?.severity) {
+      query = query.eq('severity', options.severity);
+    }
+    
+    // Apply pagination if provided
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    if (options?.offset) {
+      query = query.range(options.offset, options.offset + (options.limit || 10) - 1);
+    }
+    
+    const { data, error } = await query;
     
     if (error) {
       throw error;
@@ -50,11 +87,89 @@ export const fetchAlerts = async (): Promise<Alert[]> => {
       severity: alert.severity as AlertSeverity,
       timestamp: alert.timestamp,
       sourceIp: alert.source_ip,
-      resolved: alert.resolved
+      resolved: alert.resolved,
+      description: alert.description,
+      affectedSystems: alert.affected_systems,
+      mitigationSteps: alert.mitigation_steps,
+      attackVector: alert.attack_vector
     }));
   } catch (error: any) {
     console.error("Error fetching alerts:", error);
     toast.error("Failed to load alerts");
+    return [];
+  }
+};
+
+// Fetch a single alert by ID
+export const fetchAlert = async (id: string): Promise<Alert | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('alerts')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      throw error;
+    }
+    
+    if (!data) {
+      return null;
+    }
+    
+    return {
+      id: data.id,
+      name: data.name,
+      severity: data.severity as AlertSeverity,
+      timestamp: data.timestamp,
+      sourceIp: data.source_ip,
+      resolved: data.resolved,
+      description: data.description,
+      affectedSystems: data.affected_systems,
+      mitigationSteps: data.mitigation_steps,
+      attackVector: data.attack_vector
+    };
+  } catch (error: any) {
+    console.error("Error fetching alert:", error);
+    toast.error("Failed to load alert details");
+    return null;
+  }
+};
+
+// Mark an alert as resolved
+export const resolveAlert = async (id: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('alerts')
+      .update({ resolved: true })
+      .eq('id', id);
+    
+    if (error) throw error;
+    
+    return true;
+  } catch (error: any) {
+    console.error("Error resolving alert:", error);
+    toast.error("Failed to resolve alert");
+    return false;
+  }
+};
+
+// Fetch all incidents
+export const fetchIncidents = async (): Promise<Incident[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('incidents')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      throw error;
+    }
+    
+    return data as Incident[];
+  } catch (error: any) {
+    console.error("Error fetching incidents:", error);
+    toast.error("Failed to load incidents");
     return [];
   }
 };
@@ -133,23 +248,6 @@ export const fetchDashboardStats = async () => {
   }
 };
 
-export const resolveAlert = async (id: string): Promise<boolean> => {
-  try {
-    const { error } = await supabase
-      .from('alerts')
-      .update({ resolved: true })
-      .eq('id', id);
-    
-    if (error) throw error;
-    
-    return true;
-  } catch (error: any) {
-    console.error("Error resolving alert:", error);
-    toast.error("Failed to resolve alert");
-    return false;
-  }
-};
-
 export const fetchRecentAlerts = async (limit: number = 5): Promise<Alert[]> => {
   try {
     const { data, error } = await supabase
@@ -167,7 +265,11 @@ export const fetchRecentAlerts = async (limit: number = 5): Promise<Alert[]> => 
       severity: alert.severity as AlertSeverity,
       timestamp: alert.timestamp,
       sourceIp: alert.source_ip,
-      resolved: alert.resolved
+      resolved: alert.resolved,
+      description: alert.description,
+      affectedSystems: alert.affected_systems,
+      mitigationSteps: alert.mitigation_steps,
+      attackVector: alert.attack_vector
     }));
   } catch (error: any) {
     console.error("Error fetching recent alerts:", error);
@@ -229,6 +331,100 @@ export const addComment = async (incidentId: string, content: string, userEmail:
   } catch (error: any) {
     console.error("Error adding comment:", error);
     toast.error("Failed to add comment");
+    return false;
+  }
+};
+
+// Get all user roles
+export const getUserRoles = async (): Promise<UserRole[]> => {
+  try {
+    // We need to join with auth.users to get the email
+    const { data: users, error: usersError } = await supabase.auth.admin.listUsers();
+    
+    if (usersError) throw usersError;
+    
+    const { data: roles, error: rolesError } = await supabase
+      .from('user_roles')
+      .select('*');
+    
+    if (rolesError) throw rolesError;
+    
+    // Create a map of user IDs to emails
+    const userMap = new Map();
+    users.users.forEach(user => {
+      userMap.set(user.id, user.email);
+    });
+    
+    // Combine the data
+    const userRoles: UserRole[] = [];
+    
+    // First add users with roles
+    roles.forEach(role => {
+      const email = userMap.get(role.user_id) || 'unknown@example.com';
+      userRoles.push({
+        id: role.id,
+        userId: role.user_id,
+        email: email,
+        isAdmin: role.is_admin,
+        createdAt: role.created_at
+      });
+      
+      // Remove this user from the map to avoid duplication
+      userMap.delete(role.user_id);
+    });
+    
+    // Add remaining users without roles
+    userMap.forEach((email, userId) => {
+      userRoles.push({
+        id: 'temp-' + userId,
+        userId: userId,
+        email: email,
+        isAdmin: false,
+        createdAt: new Date().toISOString()
+      });
+    });
+    
+    return userRoles;
+  } catch (error: any) {
+    console.error("Error fetching user roles:", error);
+    toast.error("Failed to load user roles");
+    return [];
+  }
+};
+
+// Set user admin status
+export const setUserAdminStatus = async (userId: string, isAdmin: boolean): Promise<boolean> => {
+  try {
+    // Check if user already has a role
+    const { data: existingRole, error: checkError } = await supabase
+      .from('user_roles')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+    
+    if (checkError) throw checkError;
+    
+    if (existingRole) {
+      // Update existing role
+      const { error: updateError } = await supabase
+        .from('user_roles')
+        .update({ is_admin: isAdmin })
+        .eq('id', existingRole.id);
+      
+      if (updateError) throw updateError;
+    } else {
+      // Insert new role
+      const { error: insertError } = await supabase
+        .from('user_roles')
+        .insert({ user_id: userId, is_admin: isAdmin });
+      
+      if (insertError) throw insertError;
+    }
+    
+    return true;
+  } catch (error: any) {
+    console.error("Error setting user admin status:", error);
+    toast.error("Failed to update user role");
     return false;
   }
 };
