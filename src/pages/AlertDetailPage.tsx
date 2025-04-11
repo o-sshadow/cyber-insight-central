@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
@@ -26,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AlertDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -50,6 +50,24 @@ export default function AlertDetailPage() {
     };
 
     loadAlertData();
+    
+    // Set up real-time subscription for this specific alert
+    const alertSubscription = supabase
+      .channel(`alert-${id}-changes`)
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'alerts', filter: `id=eq.${id}` }, 
+        async () => {
+          // Refresh alert data when it changes
+          const refreshedAlert = await fetchAlert(id as string);
+          setAlert(refreshedAlert);
+        }
+      )
+      .subscribe();
+
+    // Clean up subscription when component unmounts
+    return () => {
+      supabase.removeChannel(alertSubscription);
+    };
   }, [id]);
 
   const handleResolveAlert = async () => {

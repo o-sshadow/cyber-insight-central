@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
@@ -61,17 +60,33 @@ export default function IncidentPage() {
 
     loadIncidentData();
 
+    // Set up real-time subscription for incident details
+    let incidentSubscription;
+    if (id) {
+      incidentSubscription = supabase
+        .channel(`incident-${id}-changes`)
+        .on('postgres_changes', 
+          { event: '*', schema: 'public', table: 'incidents', filter: `id=eq.${id}` }, 
+          async () => {
+            // Refresh incident details when they change
+            const refreshedIncident = await fetchIncident(id);
+            setIncident(refreshedIncident);
+          }
+        )
+        .subscribe();
+    }
+
     // Set up realtime subscription for logs
     let logsSubscription;
     if (id) {
       logsSubscription = supabase
-        .channel('logs-changes')
+        .channel(`logs-${id}-changes`)
         .on('postgres_changes', 
-          { event: 'INSERT', schema: 'public', table: 'logs', filter: `incident_id=eq.${id}` }, 
+          { event: '*', schema: 'public', table: 'logs', filter: `incident_id=eq.${id}` }, 
           async () => {
-            // Refresh logs when new log is added
-            if (incident) {
-              const refreshedLogs = await fetchIncidentLogs(incident.id);
+            // Refresh logs when new log is added or updated
+            if (id) {
+              const refreshedLogs = await fetchIncidentLogs(id);
               setLogs(refreshedLogs);
             }
           }
@@ -79,7 +94,11 @@ export default function IncidentPage() {
         .subscribe();
     }
 
+    // Clean up subscriptions on unmount
     return () => {
+      if (incidentSubscription) {
+        supabase.removeChannel(incidentSubscription);
+      }
       if (logsSubscription) {
         supabase.removeChannel(logsSubscription);
       }

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Shield, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import { StatsCard } from "@/components/Dashboard/StatsCard";
@@ -77,39 +76,58 @@ export default function Dashboard() {
 
     fetchDashboardData();
 
-    // Setup real-time subscription for alerts
-    let alertsSubscription;
+    // Set up real-time subscriptions for all relevant tables
     
-    try {
-      alertsSubscription = supabase
-        .channel('alerts-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, async (payload) => {
-          console.log('Real-time update:', payload);
-          // Refresh data when alerts table changes
-          const stats = await fetchDashboardStats();
-          setDashboardStats({
-            totalAlerts: stats.totalAlerts,
-            unresolvedAlerts: stats.unresolvedAlerts,
-            totalIncidents: stats.totalIncidents,
-            criticalAlerts: stats.criticalAlerts
-          });
-          setAlertsBySeverity(stats.alertsBySeverity);
-          
-          const alerts = await fetchRecentAlerts(5);
-          setRecentAlerts(alerts);
-          
-          toast.info("Alert data updated");
-        })
-        .subscribe();
-    } catch (error) {
-      console.error("Error setting up real-time subscription:", error);
-    }
+    // Alerts subscription
+    const alertsSubscription = supabase
+      .channel('alerts-dashboard-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, async () => {
+        console.log('Real-time update: alerts changed');
+        
+        // Refresh stats and recent alerts
+        const stats = await fetchDashboardStats();
+        setDashboardStats({
+          totalAlerts: stats.totalAlerts,
+          unresolvedAlerts: stats.unresolvedAlerts,
+          totalIncidents: stats.totalIncidents,
+          criticalAlerts: stats.criticalAlerts
+        });
+        setAlertsBySeverity(stats.alertsBySeverity);
+        
+        const alerts = await fetchRecentAlerts(5);
+        setRecentAlerts(alerts);
+      })
+      .subscribe();
+    
+    // Incidents subscription
+    const incidentsSubscription = supabase
+      .channel('incidents-dashboard-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incidents' }, async () => {
+        console.log('Real-time update: incidents changed');
+        
+        // Refresh stats only when incidents change
+        const stats = await fetchDashboardStats();
+        setDashboardStats(prev => ({
+          ...prev,
+          totalIncidents: stats.totalIncidents
+        }));
+      })
+      .subscribe();
+    
+    // User roles subscription
+    const rolesSubscription = supabase
+      .channel('roles-dashboard-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, () => {
+        console.log('Real-time update: user roles changed');
+        // We could refresh user-related metrics here if needed
+      })
+      .subscribe();
 
-    // Clean up subscription on unmount
+    // Clean up subscriptions on unmount
     return () => {
-      if (alertsSubscription) {
-        supabase.removeChannel(alertsSubscription);
-      }
+      supabase.removeChannel(alertsSubscription);
+      supabase.removeChannel(incidentsSubscription);
+      supabase.removeChannel(rolesSubscription);
     };
   }, []);
 

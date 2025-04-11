@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
@@ -26,6 +25,7 @@ import {
 } from "lucide-react";
 import { fetchIncidents, Incident } from "@/utils/supabaseData";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function IncidentsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -48,6 +48,24 @@ export default function IncidentsPage() {
     };
 
     loadIncidents();
+
+    // Set up real-time subscription for incidents
+    const incidentsSubscription = supabase
+      .channel('incidents-table-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'incidents' }, 
+        async () => {
+          // Refresh incidents when data changes
+          const refreshedIncidents = await fetchIncidents();
+          setIncidents(refreshedIncidents);
+        }
+      )
+      .subscribe();
+
+    // Clean up subscription when component unmounts
+    return () => {
+      supabase.removeChannel(incidentsSubscription);
+    };
   }, []);
 
   const getStatusBadge = (status: string) => {
