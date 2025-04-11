@@ -1,7 +1,6 @@
-
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bell, Menu, ShieldAlert, User, X } from "lucide-react";
+import { Bell, Menu, Settings, ShieldAlert, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/contexts/AuthContext";
@@ -76,8 +75,18 @@ export function Navbar() {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Profile</DropdownMenuItem>
-                <DropdownMenuItem>Settings</DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/profile" className="flex cursor-pointer items-center">
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/settings" className="flex cursor-pointer items-center">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => signOut()}>
                   Log out
@@ -131,16 +140,26 @@ export function Navbar() {
                 </Button>
               </div>
               <div className="mt-3 space-y-1">
-                <button
+                <Link
+                  to="/profile"
                   className="block w-full text-left px-4 py-2 text-base font-medium text-muted-foreground hover:bg-secondary"
+                  onClick={() => setIsOpen(false)}
                 >
-                  Profile
-                </button>
-                <button
+                  <div className="flex items-center">
+                    <User className="mr-2 h-4 w-4" />
+                    Profile
+                  </div>
+                </Link>
+                <Link
+                  to="/settings"
                   className="block w-full text-left px-4 py-2 text-base font-medium text-muted-foreground hover:bg-secondary"
+                  onClick={() => setIsOpen(false)}
                 >
-                  Settings
-                </button>
+                  <div className="flex items-center">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </div>
+                </Link>
                 <button
                   onClick={() => signOut()}
                   className="block w-full text-left px-4 py-2 text-base font-medium text-muted-foreground hover:bg-secondary"
