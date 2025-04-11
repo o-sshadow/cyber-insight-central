@@ -4,14 +4,7 @@ import { AlertCircle, ArrowUpRight, Shield } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-interface Alert {
-  id: string;
-  name: string;
-  severity: "Critical" | "High" | "Medium" | "Low";
-  timestamp: string;
-  sourceIp: string;
-}
+import { type Alert } from "@/utils/supabaseData";
 
 interface RecentAlertsProps {
   alerts: Alert[];

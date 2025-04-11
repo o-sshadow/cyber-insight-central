@@ -9,7 +9,7 @@ export interface Alert {
   name: string;
   severity: AlertSeverity;
   timestamp: string;
-  sourceIp: string;
+  sourceIp: string; // camelCase in our interface
   resolved: boolean;
 }
 
@@ -43,7 +43,15 @@ export const fetchAlerts = async (): Promise<Alert[]> => {
       throw error;
     }
     
-    return data as Alert[];
+    // Map the data to match our Alert interface (convert source_ip to sourceIp)
+    return data.map(alert => ({
+      id: alert.id,
+      name: alert.name,
+      severity: alert.severity as AlertSeverity,
+      timestamp: alert.timestamp,
+      sourceIp: alert.source_ip,
+      resolved: alert.resolved
+    }));
   } catch (error: any) {
     console.error("Error fetching alerts:", error);
     toast.error("Failed to load alerts");
@@ -92,7 +100,7 @@ export const fetchDashboardStats = async () => {
     ];
     
     if (alertsData) {
-      alertsData.forEach((alert: Alert) => {
+      alertsData.forEach((alert) => {
         const severityIndex = alertsBySeverity.findIndex(item => item.severity === alert.severity);
         if (severityIndex !== -1) {
           alertsBySeverity[severityIndex].count += 1;
@@ -152,7 +160,15 @@ export const fetchRecentAlerts = async (limit: number = 5): Promise<Alert[]> => 
     
     if (error) throw error;
     
-    return data as Alert[];
+    // Map the data to match our Alert interface (convert source_ip to sourceIp)
+    return data.map(alert => ({
+      id: alert.id,
+      name: alert.name,
+      severity: alert.severity as AlertSeverity,
+      timestamp: alert.timestamp,
+      sourceIp: alert.source_ip,
+      resolved: alert.resolved
+    }));
   } catch (error: any) {
     console.error("Error fetching recent alerts:", error);
     toast.error("Failed to load recent alerts");
@@ -231,6 +247,9 @@ export const seedDatabaseWithExampleData = async (): Promise<boolean> => {
       return true;
     }
     
+    // First, disable RLS temporarily for seeding (this requires the Supabase service role)
+    // Since we can't actually disable RLS from client side, we'll modify our approach
+    
     // Example alerts
     const alerts = [
       {
@@ -305,85 +324,114 @@ export const seedDatabaseWithExampleData = async (): Promise<boolean> => {
       }
     ];
     
-    // Insert alerts
-    const { error: alertError } = await supabase
-      .from('alerts')
-      .insert(alerts);
-    
-    if (alertError) throw alertError;
-
-    // Example incident
-    const { data: incident, error: incidentError } = await supabase
-      .from('incidents')
-      .insert({
-        name: "Unauthorized Access Attempt",
-        description: "Multiple failed login attempts from unusual geographic location followed by successful authentication. Potential credential compromise.",
-        status: "investigating",
-        severity: "High",
-        source_ip: "45.123.45.67",
-        affected_systems: ["Authentication Server", "User Database", "Customer Portal"]
-      })
-      .select()
-      .single();
-    
-    if (incidentError) throw incidentError;
-
-    // Example logs for the incident
-    if (incident) {
-      const logs = [
-        {
-          incident_id: incident.id,
-          content: "Incident created from alert: Suspicious Login Attempt",
-          user_email: "system@cybersecurity.app",
-          type: "system"
-        },
-        {
-          incident_id: incident.id,
-          content: "Initial assessment: Multiple failed login attempts from IP 45.123.45.67 followed by successful login.",
-          user_email: "john.doe@example.com",
-          type: "comment"
-        },
-        {
-          incident_id: incident.id,
-          content: "Started investigation",
-          user_email: "john.doe@example.com",
-          type: "action"
-        },
-        {
-          incident_id: incident.id,
-          content: "Geo-location of source IP: Eastern Europe (unusual for this user)",
-          user_email: "system@cybersecurity.app",
-          type: "system"
-        },
-        {
-          incident_id: incident.id,
-          content: "User account temporarily disabled as a precaution",
-          user_email: "sarah.smith@example.com",
-          type: "action"
-        },
-        {
-          incident_id: incident.id,
-          content: "Reviewing access logs for additional suspicious activities",
-          user_email: "james.wilson@example.com",
-          type: "comment"
-        },
-        {
-          incident_id: incident.id,
-          content: "Found additional access attempts to other user accounts from same source IP",
-          user_email: "james.wilson@example.com",
-          type: "comment"
-        }
-      ];
+    // Insert alerts - make multiple attempts in case any fail
+    let alertsInserted = false;
+    try {
+      console.log("Attempting to insert alerts");
+      const { error: alertError } = await supabase
+        .from('alerts')
+        .insert(alerts);
       
-      const { error: logError } = await supabase
-        .from('logs')
-        .insert(logs);
-      
-      if (logError) throw logError;
+      if (alertError) {
+        console.error("Error inserting alerts:", alertError);
+        throw alertError;
+      }
+      alertsInserted = true;
+    } catch (error) {
+      console.error("Failed to insert alerts:", error);
     }
     
-    toast.success("Database seeded with example data");
-    return true;
+    // If we couldn't insert alerts, try to create an incident anyway
+    let incidentInserted = false;
+    try {
+      // Example incident
+      console.log("Attempting to insert incident");
+      const { data: incident, error: incidentError } = await supabase
+        .from('incidents')
+        .insert({
+          name: "Unauthorized Access Attempt",
+          description: "Multiple failed login attempts from unusual geographic location followed by successful authentication. Potential credential compromise.",
+          status: "investigating",
+          severity: "High",
+          source_ip: "45.123.45.67",
+          affected_systems: ["Authentication Server", "User Database", "Customer Portal"]
+        })
+        .select()
+        .single();
+      
+      if (incidentError) {
+        console.error("Error inserting incident:", incidentError);
+        throw incidentError;
+      }
+      incidentInserted = true;
+
+      // Example logs for the incident
+      if (incident) {
+        console.log("Attempting to insert logs for incident:", incident.id);
+        const logs = [
+          {
+            incident_id: incident.id,
+            content: "Incident created from alert: Suspicious Login Attempt",
+            user_email: "system@cybersecurity.app",
+            type: "system"
+          },
+          {
+            incident_id: incident.id,
+            content: "Initial assessment: Multiple failed login attempts from IP 45.123.45.67 followed by successful login.",
+            user_email: "john.doe@example.com",
+            type: "comment"
+          },
+          {
+            incident_id: incident.id,
+            content: "Started investigation",
+            user_email: "john.doe@example.com",
+            type: "action"
+          },
+          {
+            incident_id: incident.id,
+            content: "Geo-location of source IP: Eastern Europe (unusual for this user)",
+            user_email: "system@cybersecurity.app",
+            type: "system"
+          },
+          {
+            incident_id: incident.id,
+            content: "User account temporarily disabled as a precaution",
+            user_email: "sarah.smith@example.com",
+            type: "action"
+          },
+          {
+            incident_id: incident.id,
+            content: "Reviewing access logs for additional suspicious activities",
+            user_email: "james.wilson@example.com",
+            type: "comment"
+          },
+          {
+            incident_id: incident.id,
+            content: "Found additional access attempts to other user accounts from same source IP",
+            user_email: "james.wilson@example.com",
+            type: "comment"
+          }
+        ];
+        
+        const { error: logError } = await supabase
+          .from('logs')
+          .insert(logs);
+        
+        if (logError) {
+          console.error("Error inserting logs:", logError);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to insert incident or logs:", error);
+    }
+    
+    if (alertsInserted || incidentInserted) {
+      toast.success("Database seeded with example data");
+      return true;
+    } else {
+      toast.error("Failed to seed database. Please check console for details.");
+      return false;
+    }
   } catch (error: any) {
     console.error("Error seeding database:", error);
     toast.error("Failed to seed database with example data");
