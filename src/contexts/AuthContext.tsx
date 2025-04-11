@@ -1,8 +1,9 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
+import { User } from '@supabase/supabase-js';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 // Define the context types
 interface AuthContextProps {
@@ -12,16 +13,10 @@ interface AuthContextProps {
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   loading: boolean;
-  supabase: SupabaseClient;
 }
 
 // Create the context
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
-
-// Create the Supabase client
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -123,7 +118,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, signIn, signUp, signOut, loading, supabase }}>
+    <AuthContext.Provider value={{ user, session, signIn, signUp, signOut, loading }}>
       {children}
     </AuthContext.Provider>
   );
