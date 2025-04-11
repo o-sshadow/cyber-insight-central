@@ -9,9 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Dashboard() {
-  const { supabase } = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [dashboardStats, setDashboardStats] = useState({
     totalAlerts: 0,
@@ -103,22 +104,30 @@ export default function Dashboard() {
 
     fetchDashboardData();
 
-    // Enable Supabase real-time subscriptions
-    // In a real app, this would be implemented
-    const alertsSubscription = supabase
-      .channel('alerts-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, (payload) => {
-        // Handle real-time updates
-        console.log('Real-time update:', payload);
-        // In a real app, we would update the state here based on the payload
-      })
-      .subscribe();
+    // Setup real-time subscription for alerts
+    let alertsSubscription;
+    
+    try {
+      alertsSubscription = supabase
+        .channel('alerts-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, (payload) => {
+          console.log('Real-time update:', payload);
+          // In a real app, we would update the state here based on the payload
+          toast.info("Alert data updated");
+          fetchDashboardData();
+        })
+        .subscribe();
+    } catch (error) {
+      console.error("Error setting up real-time subscription:", error);
+    }
 
+    // Clean up subscription on unmount
     return () => {
-      // Clean up the subscription
-      supabase.removeChannel(alertsSubscription);
+      if (alertsSubscription) {
+        supabase.removeChannel(alertsSubscription);
+      }
     };
-  }, [supabase]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-cyber-background">

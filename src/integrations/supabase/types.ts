@@ -9,7 +9,101 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      alerts: {
+        Row: {
+          id: string
+          name: string
+          resolved: boolean
+          severity: string
+          source_ip: string
+          timestamp: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          resolved?: boolean
+          severity: string
+          source_ip: string
+          timestamp?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          resolved?: boolean
+          severity?: string
+          source_ip?: string
+          timestamp?: string
+        }
+        Relationships: []
+      }
+      incidents: {
+        Row: {
+          affected_systems: string[] | null
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          severity: string
+          source_ip: string | null
+          status: string
+        }
+        Insert: {
+          affected_systems?: string[] | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          severity: string
+          source_ip?: string | null
+          status?: string
+        }
+        Update: {
+          affected_systems?: string[] | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          severity?: string
+          source_ip?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      logs: {
+        Row: {
+          content: string
+          id: string
+          incident_id: string | null
+          timestamp: string
+          type: string
+          user_email: string
+        }
+        Insert: {
+          content: string
+          id?: string
+          incident_id?: string | null
+          timestamp?: string
+          type: string
+          user_email: string
+        }
+        Update: {
+          content?: string
+          id?: string
+          incident_id?: string | null
+          timestamp?: string
+          type?: string
+          user_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "logs_incident_id_fkey"
+            columns: ["incident_id"]
+            isOneToOne: false
+            referencedRelation: "incidents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

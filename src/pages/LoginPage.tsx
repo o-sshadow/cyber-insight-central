@@ -124,6 +124,7 @@ export default function LoginPage() {
                       variant="link" 
                       className="p-0 text-primary" 
                       onClick={() => setIsSignUp(false)}
+                      type="button"
                     >
                       Sign In
                     </Button>
@@ -135,6 +136,7 @@ export default function LoginPage() {
                       variant="link" 
                       className="p-0 text-primary"
                       onClick={() => setIsSignUp(true)}
+                      type="button"
                     >
                       Create one
                     </Button>
